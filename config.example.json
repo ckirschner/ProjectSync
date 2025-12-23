@@ -1,0 +1,11 @@
+{
+  "projects": [
+    {
+      "name": "Example Project",
+      "local_path": "/Users/yourname/projects/myproject",
+      "remote_host": "other-mac",
+      "remote_path": "/Users/yourname/projects/myproject",
+      "git_branch": "main"
+    }
+  ]
+}

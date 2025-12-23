@@ -1,0 +1,33 @@
+#!/bin/bash
+# Launcher script for ProjectSync
+
+# Get the directory where the .app bundle lives
+APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+LOG_FILE="$APP_DIR/sync_tool.log"
+
+cd "$APP_DIR"
+
+# Try different Python installations in order of preference
+PYTHONS=(
+    "/opt/homebrew/bin/python3"      # Homebrew on Apple Silicon
+    "/usr/local/bin/python3"         # Homebrew on Intel
+    "/usr/bin/python3"               # System Python (fallback)
+)
+
+for PYTHON in "${PYTHONS[@]}"; do
+    if [ -x "$PYTHON" ]; then
+        echo "$(date): Trying $PYTHON" >> "$LOG_FILE"
+
+        # Test if tkinter works with this Python
+        if "$PYTHON" -c "import tkinter; tkinter.Tk().destroy()" 2>/dev/null; then
+            echo "$(date): Using $PYTHON (tkinter OK)" >> "$LOG_FILE"
+            exec "$PYTHON" "$APP_DIR/src/sync_tool.py" 2>> "$LOG_FILE"
+        else
+            echo "$(date): $PYTHON tkinter failed, trying next..." >> "$LOG_FILE"
+        fi
+    fi
+done
+
+# If we get here, no working Python was found
+echo "$(date): No working Python with tkinter found!" >> "$LOG_FILE"
+osascript -e 'display alert "Python with tkinter not found" message "Please install Python with tkinter support:\n\nbrew install python-tk\n\nSee sync_tool.log for details." as critical'

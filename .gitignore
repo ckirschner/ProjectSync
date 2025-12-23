@@ -1,0 +1,29 @@
+# User's project config (contains personal paths)
+config.json
+
+# Icon creation script (not needed to run the app)
+create_icon.py
+icon.png
+*.iconset/
+
+# Log file
+sync_tool.log
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
