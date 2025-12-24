@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 # Check for tkinter before importing
@@ -567,6 +568,48 @@ class SyncApp(tk.Tk):
         except Exception as e:
             return False, str(e)
 
+    def _run_in_thread(self, func, callback=None):
+        """Run a function in a background thread to keep UI responsive"""
+        self._set_busy(True)
+
+        def thread_target():
+            try:
+                result = func()
+            except Exception as e:
+                result = False
+            finally:
+                # Schedule callback on main thread
+                self.after(0, lambda: self._thread_done(result, callback))
+
+        thread = threading.Thread(target=thread_target, daemon=True)
+        thread.start()
+
+        # Keep UI responsive while thread runs
+        self._poll_thread(thread)
+
+    def _poll_thread(self, thread):
+        """Poll thread and keep UI responsive"""
+        if thread.is_alive():
+            self.update_idletasks()
+            self.after(50, lambda: self._poll_thread(thread))
+
+    def _thread_done(self, result, callback):
+        """Called when background thread completes"""
+        self._set_busy(False)
+        if callback:
+            callback(result)
+
+    def _set_busy(self, busy):
+        """Set busy state - disable buttons and show wait cursor"""
+        if busy:
+            self.config(cursor="watch")
+            self._set_buttons_state(False)
+        else:
+            self.config(cursor="")
+            if self.current_project:
+                self._set_buttons_state(True)
+        self.update_idletasks()
+
     def _ssh_setup(self):
         """Open SSH setup helper dialog"""
         SSHSetupDialog(self)
@@ -818,20 +861,30 @@ class SyncApp(tk.Tk):
         if not self.current_project:
             return
 
-        steps = [
-            ("Syncing untracked files", self._sync_files_to_remote),
-            ("Pushing git changes", self._git_push_local),
-            ("Pulling git on remote", self._git_pull_on_remote),
-        ]
+        # Show busy cursor during sync
+        self.config(cursor="watch")
+        self._set_buttons_state(False)
+        self.update()
 
-        for step_name, step_func in steps:
-            self._set_status(step_name + "...", "blue")
-            if not step_func():
-                self._set_status(f"Sync stopped at: {step_name}", "orange")
-                return
+        try:
+            steps = [
+                ("Syncing untracked files", self._sync_files_to_remote),
+                ("Pushing git changes", self._git_push_local),
+                ("Pulling git on remote", self._git_pull_on_remote),
+            ]
 
-        self._set_status("Sync complete! Remote matches this machine.", "green")
-        messagebox.showinfo("Success", "Remote machine now matches this machine!")
+            for step_name, step_func in steps:
+                self._set_status(step_name + "...", "blue")
+                self.update()  # Force UI update before blocking call
+                if not step_func():
+                    self._set_status(f"Sync stopped at: {step_name}", "orange")
+                    return
+
+            self._set_status("Sync complete! Remote matches this machine.", "green")
+            messagebox.showinfo("Success", "Remote machine now matches this machine!")
+        finally:
+            self.config(cursor="")
+            self._set_buttons_state(True)
 
 
 def main():
