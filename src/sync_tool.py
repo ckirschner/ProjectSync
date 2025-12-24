@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # Check for tkinter before importing
 try:
@@ -239,97 +238,6 @@ class CommitDialog(tk.Toplevel):
             messagebox.showerror("Error", "Commit message is required")
             return
         self.result = msg
-        self.destroy()
-
-
-class ConflictDialog(tk.Toplevel):
-    """Dialog for resolving file conflicts"""
-
-    def __init__(self, parent, conflicts):
-        super().__init__(parent)
-        self.title("Conflicts Detected")
-        self.conflicts = conflicts
-        self.results = {}  # file -> 'local' | 'remote' | 'skip'
-        self.cancelled = False
-
-        self.transient(parent)
-        self.grab_set()
-
-        self.geometry("500x400")
-        self.resizable(True, True)
-
-        self._create_widgets()
-        self._center_window(parent)
-
-        self.current_index = 0
-        self._show_conflict(0)
-
-        self.wait_window(self)
-
-    def _center_window(self, parent):
-        self.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() - self.winfo_width()) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - self.winfo_height()) // 2
-        self.geometry(f"+{x}+{y}")
-
-    def _create_widgets(self):
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        self.title_label = ttk.Label(frame, text="", font=("TkDefaultFont", 12, "bold"))
-        self.title_label.pack(anchor="w")
-
-        self.file_label = ttk.Label(frame, text="")
-        self.file_label.pack(anchor="w", pady=(10,5))
-
-        ttk.Label(frame, text="Modified on both local and remote").pack(anchor="w")
-
-        info_frame = ttk.Frame(frame)
-        info_frame.pack(fill=tk.X, pady=15)
-
-        self.local_time_label = ttk.Label(info_frame, text="Local:  ")
-        self.local_time_label.pack(anchor="w")
-        self.remote_time_label = ttk.Label(info_frame, text="Remote: ")
-        self.remote_time_label.pack(anchor="w")
-
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(pady=20)
-        ttk.Button(btn_frame, text="Use Local", command=lambda: self._resolve('local')).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Use Remote", command=lambda: self._resolve('remote')).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Skip", command=lambda: self._resolve('skip')).pack(side=tk.LEFT, padx=5)
-
-        self.apply_all_var = tk.BooleanVar()
-        ttk.Checkbutton(frame, text="Apply to all remaining conflicts", variable=self.apply_all_var).pack(anchor="w", pady=10)
-
-        ttk.Separator(frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-        ttk.Button(frame, text="Cancel All", command=self._cancel).pack()
-
-    def _show_conflict(self, index):
-        if index >= len(self.conflicts):
-            self.destroy()
-            return
-
-        conflict = self.conflicts[index]
-        self.title_label.config(text=f"Conflict {index + 1} of {len(self.conflicts)}")
-        self.file_label.config(text=f"File: {conflict['file']}")
-        self.local_time_label.config(text=f"Local:  {conflict.get('local_time', 'Unknown')}")
-        self.remote_time_label.config(text=f"Remote: {conflict.get('remote_time', 'Unknown')}")
-
-    def _resolve(self, choice):
-        conflict = self.conflicts[self.current_index]
-        self.results[conflict['file']] = choice
-
-        if self.apply_all_var.get():
-            # Apply same choice to all remaining
-            for i in range(self.current_index + 1, len(self.conflicts)):
-                self.results[self.conflicts[i]['file']] = choice
-            self.destroy()
-        else:
-            self.current_index += 1
-            self._show_conflict(self.current_index)
-
-    def _cancel(self):
-        self.cancelled = True
         self.destroy()
 
 
@@ -579,33 +487,23 @@ class SyncApp(tk.Tk):
         self.branch_label = ttk.Label(info_frame, text="Branch: ")
         self.branch_label.pack(anchor="w")
 
-        # Full Sync button
-        sync_frame = ttk.Frame(main_frame)
-        sync_frame.pack(fill=tk.X, pady=10)
-        self.full_sync_btn = ttk.Button(sync_frame, text="Full Sync", command=self._full_sync)
-        self.full_sync_btn.pack(expand=True)
+        # Main sync button
+        sync_frame = ttk.LabelFrame(main_frame, text="Sync to Remote", padding=10)
+        sync_frame.pack(fill=tk.X, pady=(0,10))
 
-        # Untracked files section
-        untracked_frame = ttk.LabelFrame(main_frame, text="Untracked Files (gitignored)", padding=10)
-        untracked_frame.pack(fill=tk.X, pady=(0,10))
+        ttk.Label(sync_frame, text="Push this machine's state to remote (files + git)",
+                  foreground="gray").pack(anchor="w", pady=(0,8))
+        self.full_sync_btn = ttk.Button(sync_frame, text="Sync to Remote", command=self._sync_to_remote_full)
+        self.full_sync_btn.pack(fill=tk.X)
 
-        btn_row1 = ttk.Frame(untracked_frame)
-        btn_row1.pack(fill=tk.X)
-        self.sync_to_btn = ttk.Button(btn_row1, text="Sync to Remote ->", command=self._sync_to_remote)
-        self.sync_to_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,5))
-        self.sync_from_btn = ttk.Button(btn_row1, text="<- Sync from Remote", command=self._sync_from_remote)
-        self.sync_from_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5,0))
+        # Individual operations section
+        ops_frame = ttk.LabelFrame(main_frame, text="Individual Operations", padding=10)
+        ops_frame.pack(fill=tk.X, pady=(0,10))
 
-        # Git operations section
-        git_frame = ttk.LabelFrame(main_frame, text="Git Operations", padding=10)
-        git_frame.pack(fill=tk.X, pady=(0,10))
-
-        btn_row2 = ttk.Frame(git_frame)
-        btn_row2.pack(fill=tk.X)
-        self.push_btn = ttk.Button(btn_row2, text="Push to Remote", command=self._git_push)
-        self.push_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,5))
-        self.pull_btn = ttk.Button(btn_row2, text="Pull from Remote", command=self._git_pull)
-        self.pull_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5,0))
+        self.sync_files_btn = ttk.Button(ops_frame, text="Sync Untracked Files Only", command=self._sync_files_only)
+        self.sync_files_btn.pack(fill=tk.X, pady=(0,5))
+        self.git_push_btn = ttk.Button(ops_frame, text="Git Push + Remote Pull", command=self._git_push_and_remote_pull)
+        self.git_push_btn.pack(fill=tk.X)
 
         # Project management buttons
         mgmt_frame = ttk.Frame(main_frame)
@@ -626,8 +524,7 @@ class SyncApp(tk.Tk):
 
     def _set_buttons_state(self, enabled):
         state = "normal" if enabled else "disabled"
-        for btn in [self.full_sync_btn, self.sync_to_btn, self.sync_from_btn,
-                    self.push_btn, self.pull_btn]:
+        for btn in [self.full_sync_btn, self.sync_files_btn, self.git_push_btn]:
             btn.config(state=state)
 
     def _update_project_list(self):
@@ -759,7 +656,8 @@ class SyncApp(tk.Tk):
         is_dirty = bool(output.strip())
         return is_dirty, output.strip()
 
-    def _git_push(self, skip_commit_check=False):
+    def _git_push_local(self):
+        """Git add, commit (if needed), and push locally"""
         if not self.current_project:
             return False
 
@@ -797,111 +695,44 @@ class SyncApp(tk.Tk):
             messagebox.showerror("Error", f"Push failed:\n{output}")
             return False
 
-    def _git_pull(self):
+    def _git_pull_on_remote(self):
+        """SSH to remote machine and run git pull"""
         if not self.current_project:
             return False
 
-        cwd = self.current_project['local_path']
+        host = self.current_project['remote_host']
+        remote_path = self.current_project['remote_path']
         branch = self.current_project['git_branch']
 
-        # Check for uncommitted changes
-        is_dirty, _ = self._get_git_status()
-        if is_dirty:
-            if not messagebox.askyesno("Warning",
-                "You have uncommitted changes. Pull may fail or create merge conflicts.\n\nContinue anyway?"):
-                self._set_status("Pull cancelled", "gray")
-                return False
+        self._set_status("Running git pull on remote...", "blue")
 
-        self._set_status("Pulling from remote...", "blue")
-        success, output = self._run_command(f"git pull origin {branch}", cwd=cwd)
+        cmd = f'ssh {host} "cd {remote_path} && git pull origin {branch}"'
+        success, output = self._run_command(cmd)
 
         if success:
-            self._set_status("Pull successful", "green")
+            self._set_status("Remote pull successful", "green")
             return True
         else:
-            self._set_status("Pull failed", "red")
-            messagebox.showerror("Error", f"Pull failed:\n{output}")
+            self._set_status("Remote pull failed", "red")
+            messagebox.showerror("Error", f"Remote git pull failed:\n{output}")
             return False
 
-    def _get_gitignored_files(self, local=True):
-        """Get list of gitignored files that exist"""
-        if local:
-            cwd = self.current_project['local_path']
-            success, output = self._run_command(
-                "git ls-files --others --ignored --exclude-standard",
-                cwd=cwd
-            )
-        else:
-            host = self.current_project['remote_host']
-            path = self.current_project['remote_path']
-            success, output = self._run_command(
-                f'ssh {host} "cd {path} && git ls-files --others --ignored --exclude-standard"'
-            )
+    def _get_gitignored_files(self):
+        """Get list of local gitignored files that exist"""
+        cwd = self.current_project['local_path']
+        success, output = self._run_command(
+            "git ls-files --others --ignored --exclude-standard",
+            cwd=cwd
+        )
 
         if success and output:
             return output.strip().split('\n')
         return []
 
-    def _get_file_mtime(self, filepath, local=True):
-        """Get file modification time"""
-        if local:
-            cwd = self.current_project['local_path']
-            full_path = os.path.join(cwd, filepath)
-            if os.path.exists(full_path):
-                mtime = os.path.getmtime(full_path)
-                return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            host = self.current_project['remote_host']
-            path = self.current_project['remote_path']
-            success, output = self._run_command(
-                f'ssh {host} "stat -f %m {path}/{filepath}" 2>/dev/null || ssh {host} "stat -c %Y {path}/{filepath}" 2>/dev/null'
-            )
-            if success and output.strip().isdigit():
-                mtime = int(output.strip())
-                return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-        return None
-
-    def _detect_conflicts(self, direction):
-        """Detect files that exist on both sides"""
-        local_files = set(self._get_gitignored_files(local=True))
-        remote_files = set(self._get_gitignored_files(local=False))
-
-        common_files = local_files & remote_files
-        conflicts = []
-
-        for f in common_files:
-            local_time = self._get_file_mtime(f, local=True)
-            remote_time = self._get_file_mtime(f, local=False)
-
-            if local_time and remote_time and local_time != remote_time:
-                conflicts.append({
-                    'file': f,
-                    'local_time': local_time,
-                    'remote_time': remote_time
-                })
-
-        return conflicts
-
-    def _sync_to_remote(self, resolve_conflicts=True):
+    def _sync_files_to_remote(self):
+        """Sync untracked/gitignored files to remote (local overwrites remote)"""
         if not self.current_project:
             return False
-
-        self._set_status("Checking for conflicts...", "blue")
-
-        if resolve_conflicts:
-            conflicts = self._detect_conflicts('to_remote')
-            if conflicts:
-                dialog = ConflictDialog(self, conflicts)
-                if dialog.cancelled:
-                    self._set_status("Sync cancelled", "gray")
-                    return False
-
-                # Filter out files where user chose 'remote' or 'skip'
-                exclude_files = [f for f, choice in dialog.results.items() if choice != 'local']
-            else:
-                exclude_files = []
-        else:
-            exclude_files = []
 
         self._set_status("Syncing untracked files to remote...", "blue")
 
@@ -910,8 +741,7 @@ class SyncApp(tk.Tk):
         remote_path = self.current_project['remote_path']
 
         # Get files to sync
-        files = self._get_gitignored_files(local=True)
-        files = [f for f in files if f not in exclude_files]
+        files = self._get_gitignored_files()
 
         if not files:
             self._set_status("No untracked files to sync", "gray")
@@ -937,80 +767,39 @@ class SyncApp(tk.Tk):
         finally:
             os.unlink(temp_file)
 
-    def _sync_from_remote(self, resolve_conflicts=True):
+    def _sync_files_only(self):
+        """Button handler: sync untracked files only"""
+        self._sync_files_to_remote()
+
+    def _git_push_and_remote_pull(self):
+        """Button handler: git push locally, then git pull on remote"""
         if not self.current_project:
-            return False
+            return
 
-        self._set_status("Checking for conflicts...", "blue")
+        if not self._git_push_local():
+            return
 
-        if resolve_conflicts:
-            conflicts = self._detect_conflicts('from_remote')
-            if conflicts:
-                dialog = ConflictDialog(self, conflicts)
-                if dialog.cancelled:
-                    self._set_status("Sync cancelled", "gray")
-                    return False
+        self._git_pull_on_remote()
 
-                # Filter out files where user chose 'local' or 'skip'
-                exclude_files = [f for f, choice in dialog.results.items() if choice != 'remote']
-            else:
-                exclude_files = []
-        else:
-            exclude_files = []
-
-        self._set_status("Syncing untracked files from remote...", "blue")
-
-        cwd = self.current_project['local_path']
-        host = self.current_project['remote_host']
-        remote_path = self.current_project['remote_path']
-
-        # Get files from remote
-        files = self._get_gitignored_files(local=False)
-        files = [f for f in files if f not in exclude_files]
-
-        if not files:
-            self._set_status("No untracked files to sync", "gray")
-            return True
-
-        # Create a temp file with the list
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tf:
-            tf.write('\n'.join(files))
-            temp_file = tf.name
-
-        try:
-            cmd = f'rsync -avz --files-from="{temp_file}" "{host}:{remote_path}/" "{cwd}/"'
-            success, output = self._run_command(cmd)
-
-            if success:
-                self._set_status(f"Synced {len(files)} files from remote", "green")
-                return True
-            else:
-                self._set_status("Sync failed", "red")
-                messagebox.showerror("Error", f"Sync failed:\n{output}")
-                return False
-        finally:
-            os.unlink(temp_file)
-
-    def _full_sync(self):
+    def _sync_to_remote_full(self):
+        """Full sync: push everything to remote so it matches this machine"""
         if not self.current_project:
             return
 
         steps = [
-            ("Syncing untracked to remote", lambda: self._sync_to_remote()),
-            ("Pushing to git", lambda: self._git_push()),
-            ("Pulling from git", lambda: self._git_pull()),
-            ("Syncing untracked from remote", lambda: self._sync_from_remote()),
+            ("Syncing untracked files", self._sync_files_to_remote),
+            ("Pushing git changes", self._git_push_local),
+            ("Pulling git on remote", self._git_pull_on_remote),
         ]
 
         for step_name, step_func in steps:
             self._set_status(step_name + "...", "blue")
             if not step_func():
-                self._set_status(f"Full sync stopped at: {step_name}", "orange")
+                self._set_status(f"Sync stopped at: {step_name}", "orange")
                 return
 
-        self._set_status("Full sync complete!", "green")
-        messagebox.showinfo("Success", "Full sync completed successfully!")
+        self._set_status("Sync complete! Remote matches this machine.", "green")
+        messagebox.showinfo("Success", "Remote machine now matches this machine!")
 
 
 def main():

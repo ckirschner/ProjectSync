@@ -4,10 +4,9 @@ A simple GUI tool to sync development projects between two Macs using Git (for t
 
 ## Features
 
-- **Git Operations**: Push/pull with automatic dirty tree detection and commit prompts
+- **One-Way Sync**: Push this machine's state to remote - always run from the source machine
+- **Git Operations**: Commits locally, pushes, then runs `git pull` on remote via SSH
 - **Untracked File Sync**: Syncs gitignored files (like `.env`, `node_modules`, local configs) via rsync
-- **Conflict Detection**: Warns when the same untracked file was modified on both machines
-- **Full Sync**: One-click to sync everything in both directions
 - **SSH Setup Helper**: Built-in wizard to set up SSH keys between machines
 - **Portable**: The entire folder can be copied between machines
 
@@ -44,11 +43,11 @@ python3 sync_tool.py
 
 ### Syncing
 
-- **Full Sync**: Syncs everything (untracked → push → pull → untracked back)
-- **Sync to Remote →**: Only sync untracked files to the remote machine
-- **← Sync from Remote**: Only sync untracked files from the remote machine
-- **Push to Remote**: Git push (prompts for commit message if needed)
-- **Pull from Remote**: Git pull
+Always run from the machine where you made changes. The remote will be updated to match.
+
+- **Sync to Remote**: Full sync - rsync untracked files, git push, then git pull on remote
+- **Sync Untracked Files Only**: Just rsync gitignored files to remote
+- **Git Push + Remote Pull**: Just the git operations (no untracked files)
 
 ## How it works
 
