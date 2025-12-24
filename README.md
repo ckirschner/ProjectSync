@@ -22,7 +22,7 @@ A simple GUI tool to sync development projects between two Macs using Git (for t
 
 ### Option 1: Clone from GitHub
 ```bash
-git clone https://github.com/YOUR_USERNAME/ProjectSync](https://github.com/ckirschner/ProjectSync.git
+git clone https://github.com/ckirschner/ProjectSync.git
 ```
 
 ### Option 2: Download ZIP
