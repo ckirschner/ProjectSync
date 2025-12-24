@@ -738,6 +738,22 @@ class SyncApp(tk.Tk):
             messagebox.showerror("Error", f"Push failed:\n{output}")
             return False
 
+    def _convert_to_ssh_url(self, url):
+        """Convert HTTPS GitHub URL to SSH URL for remote machine auth"""
+        url = url.strip()
+        # Already SSH format
+        if url.startswith("git@"):
+            return url
+        # Convert HTTPS to SSH
+        # https://github.com/user/repo.git -> git@github.com:user/repo.git
+        if "github.com" in url and url.startswith("https://"):
+            path = url.replace("https://github.com/", "")
+            if not path.endswith(".git"):
+                path += ".git"
+            return f"git@github.com:{path}"
+        # Non-GitHub URL, return as-is
+        return url
+
     def _check_remote_git_status(self):
         """Check if remote has uncommitted changes. Returns (has_changes, summary)"""
         host = self.current_project['remote_host']
@@ -784,41 +800,26 @@ class SyncApp(tk.Tk):
 
             origin_url = origin_url.strip()
 
+            # Convert HTTPS URL to SSH URL for remote machine
+            # (Remote uses SSH key auth, local can keep using HTTPS with gh)
+            remote_url = self._convert_to_ssh_url(origin_url)
+
             # Check if directory exists
             check_dir_cmd = f'ssh -o ConnectTimeout=5 {host} "test -d {remote_path} && echo yes || echo no"'
             success, dir_exists = self._run_command(check_dir_cmd)
             dir_exists = success and dir_exists.strip() == "yes"
 
-            # Extract repo from origin URL (e.g., "ckirschner/ProjectSync")
-            # Handle both HTTPS and SSH URLs
-            if "github.com" in origin_url:
-                if origin_url.startswith("git@"):
-                    # git@github.com:user/repo.git
-                    repo = origin_url.split(":")[-1].replace(".git", "")
-                else:
-                    # https://github.com/user/repo.git
-                    repo = "/".join(origin_url.split("/")[-2:]).replace(".git", "")
-            else:
-                repo = None
-
             if dir_exists:
                 # Directory exists but no git - init, add remote, fetch, reset
                 self._set_status("Initializing git in existing directory...", "blue")
                 self.update()
-                if repo:
-                    # Use gh to clone into temp, then move .git
-                    init_cmd = f"ssh {host} \"cd {remote_path} && gh repo clone {repo} .git.tmp -- --bare && mv .git.tmp .git && git config core.bare false && git reset --hard origin/{branch}\""
-                else:
-                    init_cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}'\""
+                init_cmd = f'ssh {host} "cd {remote_path} && git init && git remote add origin {remote_url} && git fetch origin && git reset --hard origin/{branch}"'
                 success, output = self._run_command(init_cmd)
             else:
                 # Directory doesn't exist - clone
                 self._set_status("Cloning repo to remote...", "blue")
                 self.update()
-                if repo:
-                    init_cmd = f"ssh {host} \"mkdir -p $(dirname {remote_path}) && gh repo clone {repo} {remote_path}\""
-                else:
-                    init_cmd = f"ssh {host} \"bash -l -c 'mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}'\""
+                init_cmd = f'ssh {host} "mkdir -p $(dirname {remote_path}) && git clone {remote_url} {remote_path}"'
                 success, output = self._run_command(init_cmd)
 
             if success:
@@ -860,8 +861,8 @@ class SyncApp(tk.Tk):
         self._set_status("Running git pull on remote...", "blue")
         self.update()
 
-        # Use gh repo sync for GitHub repos (handles auth), fallback to git pull
-        cmd = f"ssh {host} \"cd {remote_path} && gh repo sync --force 2>/dev/null || git pull origin {branch}\""
+        # Remote uses SSH URL, so git pull uses SSH key auth
+        cmd = f'ssh {host} "cd {remote_path} && git pull origin {branch}"'
         success, output = self._run_command(cmd)
 
         if success:
