@@ -751,21 +751,56 @@ class SyncApp(tk.Tk):
         return False, ""
 
     def _git_pull_on_remote(self, skip_check=False):
-        """SSH to remote machine and run git pull"""
+        """SSH to remote machine and run git pull (or clone if needed)"""
         if not self.current_project:
             return False
 
         host = self.current_project['remote_host']
         remote_path = self.current_project['remote_path']
         branch = self.current_project['git_branch']
+        local_path = self.current_project['local_path']
 
-        # Check for uncommitted changes on remote
+        # Check if remote path is a git repo
+        self._set_status("Checking if remote has git repo...", "blue")
+        self.update()
+        check_cmd = f'ssh -o ConnectTimeout=5 {host} "test -d {remote_path}/.git && echo yes || echo no"'
+        success, output = self._run_command(check_cmd)
+
+        is_git_repo = success and output.strip() == "yes"
+
+        if not is_git_repo:
+            # Need to clone - get the origin URL from local repo
+            self._set_status("Remote has no git repo, cloning...", "blue")
+            self.update()
+
+            success, origin_url = self._run_command("git remote get-url origin", cwd=local_path)
+            if not success or not origin_url.strip():
+                self._set_status("Clone failed - no origin URL", "red")
+                messagebox.showerror("Error",
+                    "Cannot clone to remote: local repo has no 'origin' remote.\n\n"
+                    "Please set up a git remote first:\n"
+                    "  git remote add origin <url>")
+                return False
+
+            # Clone to remote (create parent dir if needed)
+            clone_cmd = f'ssh {host} "mkdir -p $(dirname {remote_path}) && git clone {origin_url.strip()} {remote_path}"'
+            success, output = self._run_command(clone_cmd)
+
+            if success:
+                self._set_status("Cloned repo to remote", "green")
+                return True
+            else:
+                self._set_status("Clone failed", "red")
+                messagebox.showerror("Error", f"Failed to clone to remote:\n{output}")
+                return False
+
+        # Remote has git repo - check for uncommitted changes
         if not skip_check:
             self._set_status("Checking remote git status...", "blue")
+            self.update()
             has_changes, summary = self._check_remote_git_status()
 
             if has_changes:
-                # Show first few lines of changes
                 lines = summary.split('\n')[:5]
                 preview = '\n'.join(lines)
                 if len(summary.split('\n')) > 5:
@@ -779,6 +814,7 @@ class SyncApp(tk.Tk):
                     return False
 
         self._set_status("Running git pull on remote...", "blue")
+        self.update()
 
         cmd = f'ssh {host} "cd {remote_path} && git pull origin {branch}"'
         success, output = self._run_command(cmd)
