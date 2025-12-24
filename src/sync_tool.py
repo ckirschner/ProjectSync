@@ -700,7 +700,7 @@ class SyncApp(tk.Tk):
         host = self.current_project['remote_host']
         remote_path = self.current_project['remote_path']
 
-        cmd = f'ssh {host} "cd {remote_path} && git status --porcelain"'
+        cmd = f'ssh -o ConnectTimeout=5 {host} "cd {remote_path} && git status --porcelain"'
         success, output = self._run_command(cmd)
 
         if success:
@@ -760,37 +760,8 @@ class SyncApp(tk.Tk):
             return output.strip().split('\n')
         return []
 
-    def _check_newer_remote_files(self, files):
-        """Check if any files on remote are newer than local. Returns list of newer files."""
-        if not files:
-            return []
-
-        cwd = self.current_project['local_path']
-        host = self.current_project['remote_host']
-        remote_path = self.current_project['remote_path']
-
-        newer_files = []
-
-        for f in files[:20]:  # Check first 20 files to avoid long delays
-            # Get local mtime
-            local_path = os.path.join(cwd, f)
-            if not os.path.exists(local_path):
-                continue
-            local_mtime = os.path.getmtime(local_path)
-
-            # Get remote mtime (try macOS stat first, then Linux)
-            cmd = f'ssh {host} "stat -f %m \\"{remote_path}/{f}\\" 2>/dev/null || stat -c %Y \\"{remote_path}/{f}\\" 2>/dev/null"'
-            success, output = self._run_command(cmd)
-
-            if success and output.strip().isdigit():
-                remote_mtime = int(output.strip())
-                if remote_mtime > local_mtime:
-                    newer_files.append(f)
-
-        return newer_files
-
-    def _sync_files_to_remote(self, skip_check=False):
-        """Sync untracked/gitignored files to remote (local overwrites remote)"""
+    def _sync_files_to_remote(self):
+        """Sync untracked/gitignored files to remote (skips newer files on remote)"""
         if not self.current_project:
             return False
 
@@ -805,23 +776,6 @@ class SyncApp(tk.Tk):
             self._set_status("No untracked files to sync", "gray")
             return True
 
-        # Check for newer files on remote
-        if not skip_check:
-            self._set_status("Checking for newer files on remote...", "blue")
-            newer_files = self._check_newer_remote_files(files)
-
-            if newer_files:
-                file_list = "\n".join(f"  • {f}" for f in newer_files[:10])
-                if len(newer_files) > 10:
-                    file_list += f"\n  ... and {len(newer_files) - 10} more"
-
-                if not messagebox.askyesno("Warning: Newer Files on Remote",
-                    f"The following files are NEWER on the remote machine:\n\n{file_list}\n\n"
-                    "Syncing will overwrite them with your local (older) versions.\n\n"
-                    "Continue anyway?"):
-                    self._set_status("Sync cancelled", "gray")
-                    return False
-
         self._set_status("Syncing untracked files to remote...", "blue")
 
         # Create a temp file with the list
@@ -831,7 +785,8 @@ class SyncApp(tk.Tk):
             temp_file = tf.name
 
         try:
-            cmd = f'rsync -avz --files-from="{temp_file}" "{cwd}/" "{host}:{remote_path}/"'
+            # -u flag skips files that are newer on destination
+            cmd = f'rsync -avzu --files-from="{temp_file}" "{cwd}/" "{host}:{remote_path}/"'
             success, output = self._run_command(cmd)
 
             if success:
