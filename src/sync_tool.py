@@ -793,13 +793,13 @@ class SyncApp(tk.Tk):
                 # Directory exists but no git - init, add remote, fetch, reset
                 self._set_status("Initializing git in existing directory...", "blue")
                 self.update()
-                init_cmd = f'ssh {host} "cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}"'
+                init_cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}'\""
                 success, output = self._run_command(init_cmd)
             else:
                 # Directory doesn't exist - clone
                 self._set_status("Cloning repo to remote...", "blue")
                 self.update()
-                init_cmd = f'ssh {host} "mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}"'
+                init_cmd = f"ssh {host} \"bash -l -c 'mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}'\""
                 success, output = self._run_command(init_cmd)
 
             if success:
@@ -841,7 +841,7 @@ class SyncApp(tk.Tk):
         self._set_status("Running git pull on remote...", "blue")
         self.update()
 
-        cmd = f'ssh {host} "cd {remote_path} && git pull origin {branch}"'
+        cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git pull origin {branch}'\""
         success, output = self._run_command(cmd)
 
         if success:
