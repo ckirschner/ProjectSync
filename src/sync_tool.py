@@ -449,7 +449,7 @@ class SyncApp(tk.Tk):
         self.geometry("580x440")
         self.resizable(False, False)
 
-        self.config = Config()
+        self.settings = Config()
         self.current_project = None
 
         self._create_widgets()
@@ -529,7 +529,7 @@ class SyncApp(tk.Tk):
             btn.config(state=state)
 
     def _update_project_list(self):
-        names = self.config.get_project_names()
+        names = self.settings.get_project_names()
         self.project_combo['values'] = names
         if names and not self.project_var.get():
             self.project_combo.current(0)
@@ -537,7 +537,7 @@ class SyncApp(tk.Tk):
 
     def _on_project_selected(self, event):
         name = self.project_var.get()
-        for p in self.config.projects:
+        for p in self.settings.projects:
             if p['name'] == name:
                 self.current_project = p
                 self.local_label.config(text=f"Local:  {p['local_path']}")
@@ -639,7 +639,7 @@ class SyncApp(tk.Tk):
     def _add_project(self):
         dialog = ProjectDialog(self, "Add Project")
         if dialog.result:
-            self.config.add_project(dialog.result)
+            self.settings.add_project(dialog.result)
             self._update_project_list()
             # Select the new project
             self.project_var.set(dialog.result['name'])
@@ -653,7 +653,7 @@ class SyncApp(tk.Tk):
 
         # Find index
         index = None
-        for i, p in enumerate(self.config.projects):
+        for i, p in enumerate(self.settings.projects):
             if p['name'] == self.current_project['name']:
                 index = i
                 break
@@ -663,7 +663,7 @@ class SyncApp(tk.Tk):
 
         dialog = ProjectDialog(self, "Edit Project", self.current_project)
         if dialog.result:
-            self.config.update_project(index, dialog.result)
+            self.settings.update_project(index, dialog.result)
             self._update_project_list()
             self.project_var.set(dialog.result['name'])
             self._on_project_selected(None)
@@ -677,9 +677,9 @@ class SyncApp(tk.Tk):
         if not messagebox.askyesno("Confirm", f"Remove project '{self.current_project['name']}'?"):
             return
 
-        for i, p in enumerate(self.config.projects):
+        for i, p in enumerate(self.settings.projects):
             if p['name'] == self.current_project['name']:
-                self.config.remove_project(i)
+                self.settings.remove_project(i)
                 break
 
         self.project_var.set("")
