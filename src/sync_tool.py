@@ -769,29 +769,45 @@ class SyncApp(tk.Tk):
         is_git_repo = success and output.strip() == "yes"
 
         if not is_git_repo:
-            # Need to clone - get the origin URL from local repo
-            self._set_status("Remote has no git repo, cloning...", "blue")
+            # Need to set up git - get the origin URL from local repo
+            self._set_status("Setting up git on remote...", "blue")
             self.update()
 
             success, origin_url = self._run_command("git remote get-url origin", cwd=local_path)
             if not success or not origin_url.strip():
-                self._set_status("Clone failed - no origin URL", "red")
+                self._set_status("Setup failed - no origin URL", "red")
                 messagebox.showerror("Error",
-                    "Cannot clone to remote: local repo has no 'origin' remote.\n\n"
+                    "Cannot set up remote: local repo has no 'origin' remote.\n\n"
                     "Please set up a git remote first:\n"
                     "  git remote add origin <url>")
                 return False
 
-            # Clone to remote (create parent dir if needed)
-            clone_cmd = f'ssh {host} "mkdir -p $(dirname {remote_path}) && git clone {origin_url.strip()} {remote_path}"'
-            success, output = self._run_command(clone_cmd)
+            origin_url = origin_url.strip()
+
+            # Check if directory exists
+            check_dir_cmd = f'ssh -o ConnectTimeout=5 {host} "test -d {remote_path} && echo yes || echo no"'
+            success, dir_exists = self._run_command(check_dir_cmd)
+            dir_exists = success and dir_exists.strip() == "yes"
+
+            if dir_exists:
+                # Directory exists but no git - init, add remote, fetch, reset
+                self._set_status("Initializing git in existing directory...", "blue")
+                self.update()
+                init_cmd = f'ssh {host} "cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}"'
+                success, output = self._run_command(init_cmd)
+            else:
+                # Directory doesn't exist - clone
+                self._set_status("Cloning repo to remote...", "blue")
+                self.update()
+                init_cmd = f'ssh {host} "mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}"'
+                success, output = self._run_command(init_cmd)
 
             if success:
-                self._set_status("Cloned repo to remote", "green")
+                self._set_status("Git set up on remote", "green")
                 return True
             else:
-                self._set_status("Clone failed", "red")
-                messagebox.showerror("Error", f"Failed to clone to remote:\n{output}")
+                self._set_status("Git setup failed", "red")
+                messagebox.showerror("Error", f"Failed to set up git on remote:\n{output}")
                 return False
 
         # Remote has git repo - check for uncommitted changes
@@ -904,9 +920,9 @@ class SyncApp(tk.Tk):
 
         try:
             steps = [
-                ("Syncing untracked files", self._sync_files_to_remote),
                 ("Pushing git changes", self._git_push_local),
-                ("Pulling git on remote", self._git_pull_on_remote),
+                ("Setting up git on remote", self._git_pull_on_remote),
+                ("Syncing untracked files", self._sync_files_to_remote),
             ]
 
             for step_name, step_func in steps:
