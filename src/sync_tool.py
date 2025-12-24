@@ -807,7 +807,16 @@ class SyncApp(tk.Tk):
                 return True
             else:
                 self._set_status("Git setup failed", "red")
-                messagebox.showerror("Error", f"Failed to set up git on remote:\n{output}")
+                # Check for auth errors
+                if "username" in output.lower() or "authentication" in output.lower() or "credential" in output.lower():
+                    messagebox.showerror("GitHub Authentication Required",
+                        f"The remote machine can't access GitHub.\n\n"
+                        "Fix: Use SSH URL instead of HTTPS.\n\n"
+                        "On your LOCAL machine, run:\n"
+                        f"  git remote set-url origin git@github.com:USER/REPO.git\n\n"
+                        "Then try syncing again.")
+                else:
+                    messagebox.showerror("Error", f"Failed to set up git on remote:\n{output}")
                 return False
 
         # Remote has git repo - check for uncommitted changes
