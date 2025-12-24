@@ -789,17 +789,36 @@ class SyncApp(tk.Tk):
             success, dir_exists = self._run_command(check_dir_cmd)
             dir_exists = success and dir_exists.strip() == "yes"
 
+            # Extract repo from origin URL (e.g., "ckirschner/ProjectSync")
+            # Handle both HTTPS and SSH URLs
+            if "github.com" in origin_url:
+                if origin_url.startswith("git@"):
+                    # git@github.com:user/repo.git
+                    repo = origin_url.split(":")[-1].replace(".git", "")
+                else:
+                    # https://github.com/user/repo.git
+                    repo = "/".join(origin_url.split("/")[-2:]).replace(".git", "")
+            else:
+                repo = None
+
             if dir_exists:
                 # Directory exists but no git - init, add remote, fetch, reset
                 self._set_status("Initializing git in existing directory...", "blue")
                 self.update()
-                init_cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}'\""
+                if repo:
+                    # Use gh to clone into temp, then move .git
+                    init_cmd = f"ssh {host} \"cd {remote_path} && gh repo clone {repo} .git.tmp -- --bare && mv .git.tmp .git && git config core.bare false && git reset --hard origin/{branch}\""
+                else:
+                    init_cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git init && git remote add origin {origin_url} && git fetch origin && git reset --hard origin/{branch}'\""
                 success, output = self._run_command(init_cmd)
             else:
                 # Directory doesn't exist - clone
                 self._set_status("Cloning repo to remote...", "blue")
                 self.update()
-                init_cmd = f"ssh {host} \"bash -l -c 'mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}'\""
+                if repo:
+                    init_cmd = f"ssh {host} \"mkdir -p $(dirname {remote_path}) && gh repo clone {repo} {remote_path}\""
+                else:
+                    init_cmd = f"ssh {host} \"bash -l -c 'mkdir -p $(dirname {remote_path}) && git clone {origin_url} {remote_path}'\""
                 success, output = self._run_command(init_cmd)
 
             if success:
@@ -841,7 +860,8 @@ class SyncApp(tk.Tk):
         self._set_status("Running git pull on remote...", "blue")
         self.update()
 
-        cmd = f"ssh {host} \"bash -l -c 'cd {remote_path} && git pull origin {branch}'\""
+        # Use gh repo sync for GitHub repos (handles auth), fallback to git pull
+        cmd = f"ssh {host} \"cd {remote_path} && gh repo sync --force 2>/dev/null || git pull origin {branch}\""
         success, output = self._run_command(cmd)
 
         if success:
